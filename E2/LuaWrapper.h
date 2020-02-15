@@ -390,8 +390,7 @@ std::string randomstringg(int length) {
 
 
 void ExecuteScript2(std::string Script) {
-	int script[] = { NULL,NULL };
-	SandBoxThread(RLS, 6, (int)script);
+	
 	/////////////////////////////////////////////////////////
 	std::string buf;
 	buf += "spawn(function()\r\n";

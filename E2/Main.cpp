@@ -22,7 +22,7 @@
 #include "MouseLib.h"
 #include "sha.h"
 #include "Offsets.h"
-DWORD ScriptContextVFT_Addy = x(0x1C0D8A0);
+
 bool READY = false;
 using namespace std;
 void WrapG(DWORD rL, lua_State* L, const char* s)
@@ -32,6 +32,17 @@ void WrapG(DWORD rL, lua_State* L, const char* s)
 	lua_setglobal(L, s);
 	r_lua_pop(rL, 1);
 	cout << s << endl;
+}
+
+
+void SetKoaxyDentity() {
+	int unk[] = { NULL, NULL };
+	int j = 6;
+	int* pointer;
+	pointer = &j;
+
+	SandBoxThread(RLS, pointer, (int)unk);
+	//SandBoxThread(rls, identity, (int)unk);
 }
 
 void WrapAllGlobals(DWORD RLS, lua_State* LS) {
@@ -189,12 +200,7 @@ int newindex_metamethod(lua_State* L) {
 	return 0;
 }
 
-int setidentity(lua_State* L) {
-	int unk[] = { NULL, NULL };
-	int level = lua_tonumber(L, -1);
-	SandBoxThread(RLS, level, (int)unk);
-	return 0;
-}
+
 
 static int custom_getrawmetatable(lua_State* L) {
 	Wrapper::UnWrap(L, RLS, 1);
@@ -212,11 +218,7 @@ static int custom_getrawmetatable(lua_State* L) {
 	return 1;
 }
 
-int set_thread_identity(lua_State* L) {
-	int sc[] = { NULL, NULL };
-	SandBoxThread(RLS, lua_tonumber(L, 1), (int)sc);
-	return 0;
-}
+
 
 int get_thread_identity(lua_State* L) {
 	lua_pushnumber(L, *reinterpret_cast<int*>(*reinterpret_cast<int*>(RLS + 128) + 24));
@@ -440,10 +442,9 @@ int getrenv(lua_State* L) {
 }
 
 static int custom_require(lua_State* L) {
-	int sc[] = { NULL, NULL };
-	SandBoxThread(RLS, 2, (int)sc);
-	Sleep(200);
-	SandBoxThread(RLS, 6, (int)sc);
+	auto asset = lua_tostring(L, -1);
+	auto hold = std::string("local module = {\"") + std::string(asset) + std::string("\+)} function module:UnpackData(returnedTable)    return unpack(returnedTable) end function module:CondenseData(...)    return {...} end return module");
+	luaL_dostring(L, hold.c_str());
 	return 1;
 }
 
@@ -480,7 +481,7 @@ int GetConnectionTR(lua_State* L, DWORD Conn) {
 
 int getconnectionfunc(lua_State* L) {
 	if (!lua_isuserdata(L, 1))
-		return luaL_argerror(L, 1, "synapse signal expected");
+		return luaL_argerror(L, 1, "synapse signal expected"); // fuc
 	DWORD Conn = (DWORD)lua_touserdata(L, 1);
 	DWORD TR = GetConnectionTR(L, Conn);
 	DWORD NRL = *(DWORD*)(*(DWORD*)(TR + 0x38) + 0x8);
@@ -490,6 +491,14 @@ int getconnectionfunc(lua_State* L) {
 	lua_xmove(LS, L, 1);
 	return 1;
 }
+
+int setidentity(lua_State* L) {
+	int unk[] = { NULL, NULL };
+	int level = lua_tonumber(L, -1);
+	SandBoxThread(RLS, &level, (int)unk);
+	return 0;
+}
+
 
 int getconnectionstate(lua_State* L)
 {
@@ -1088,16 +1097,6 @@ string getHWID() {
 #define UNLEN       256   
 bool xd = true;
 
-void SetIdentity(int id)
-{
-	int script[] = { NULL,NULL };
-	SandBoxThread(RLS, id, (int)script);
-}
-static int _require(lua_State* LS)
-{
-	SetIdentity(2);
-	Sleep(100);
-}
 
 static int _drawrect(lua_State* L) {
 	int left, top, right, bottom, r, g, b;
@@ -1437,96 +1436,6 @@ int isrbxactive(lua_State* L) {
 
 
 
-int GetGameFromLogFile() {
-	int replicator_address;
-
-	// Get the full path of RobloxPlayerBeta.exe (the
-	// program that this DLL gets injected into)
-	char c_fpath[MAX_PATH];
-	GetModuleFileNameA(GetModuleHandleA(0), c_fpath, sizeof(c_fpath));
-	std::string fpath(c_fpath), logspath = "", filepath = "";
-	for (int i = 0; i < fpath.length(); i++) {
-		if ((i + 8) < fpath.length()) {
-			// Erase some of the full path, and
-			// only go up to the "Versions" directory
-			// in the current roblox version folder
-			if (fpath.substr(i, 8) == "Versions") break; else {
-				logspath += fpath[i];
-			}
-		}
-		else break;
-	}
-	logspath += "logs"; // check logs directory
-
-
-	// logspath is now the full path to the ROBLOX logs.
-	// Now we are going to sift through to get the most
-	// recently-created log file using a code that can
-	// be found online.
-
-	WIN32_FIND_DATAA FindFileData;
-	HANDLE hFind;
-	char patter[MAX_PATH];
-
-	FILETIME bestDate = { 0, 0 };
-	FILETIME curDate;
-
-	memset(patter, 0x00, MAX_PATH);
-	sprintf_s(patter, "%s\\*.txt", logspath.c_str());
-	hFind = FindFirstFileA(patter, &FindFileData);
-	if (hFind != INVALID_HANDLE_VALUE) {
-		do { //ignore current and parent directories
-			if (strcmp(FindFileData.cFileName, ".") == 0 || strcmp(FindFileData.cFileName, "..") == 0)
-				continue;
-			if (!(FindFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-				std::string temppath = (logspath + "\\" + FindFileData.cFileName);
-				// Check creation date and time, verify that it
-				// is the MOST recently created Log file for the
-				// game that is currently running!
-				curDate = FindFileData.ftCreationTime;
-				if (CompareFileTime(&curDate, &bestDate) > 0) {
-					bestDate = curDate;
-					filepath = temppath;
-				}
-			}
-		} while (FindNextFileA(hFind, &FindFileData));
-		FindClose(hFind);
-	}
-
-	// Read the file, Put its contents into a std::string
-	std::string fdata = "";
-	std::ifstream ifs(filepath, std::ifstream::in);
-	char c = ifs.get();
-	while (ifs.good()) fdata += c, c = ifs.get();
-	ifs.close();
-
-	// Get the line from the log file that displays
-	// the ClientReplicator address!
-	size_t pos = fdata.find("Replicator created: ");
-	if (pos != std::string::npos) {
-		pos = pos + 20; // Skip to the end of the string.
-
-		// Convert the address here (8 character hex string),
-		// to a number value that we can use in our DLL!
-		std::stringstream ss;
-		ss << std::hex << fdata.substr(pos, 8).c_str();
-		ss >> replicator_address;
-	}
-	DWORD Game = *(DWORD*)(*(DWORD*)(replicator_address + ScriptContextVFT_Addy) + ScriptContextVFT_Addy);//GetParentOffset2x
-	return Game;
-}
-
-namespace ScriptCOontext {
-	DWORD hookStateIndex(DWORD hooklocation, int offset) {
-		DWORD* context = reinterpret_cast<DWORD*>(hooklocation);
-		//return (int)(&context[0xAC] - *(DWORD*)&context[0xAC]);
-		return (int)& context[offset] - context[offset];
-	}
-	void scriptcontext() {
-		DWORD ScriptContext = Memory::Scan(PAGE_READWRITE, (char*)&ScriptContextVFT_Addy, (char*)"xxxx");
-		RLS = hookStateIndex(ScriptContext, 172);
-	}
-}
 
 static int EQ(lua_State* Thread) {
 	lua_pushboolean(Thread, (*(DWORD*)lua_touserdata(Thread, 1) == *(DWORD*)lua_touserdata(Thread, 2)));
@@ -1620,17 +1529,53 @@ static const struct luaL_Reg CoreFunctions[] = {
     {NULL, NULL}
 };
 
+
+
+const char* GetClass(int self)
+{
+	return (const char*)(*(int(**)(void))(*(int*)self + 16))();
+}
+
+
+int FindFirstClass(int Instance, const char* Name)
+{
+	DWORD CHILD_START = *(DWORD*)(Instance + 0x2C);
+	DWORD CHILD_END = *(DWORD*)(CHILD_START + 4);
+
+	for (int i = *(int*)CHILD_START; i != CHILD_END; i += 8)
+	{
+		if (memcmp(GetClass(*(int*)i), Name, strlen(Name)) == 0)
+		{
+			return *(int*)i;
+		}
+	}
+}
+
+
+
 void Main()
 {
-	XorS(loadstringscript, "loadstring(game:HttpGet(\"https://pastebin.com/raw/VhMGJgRS \",true))()");
-	XorS(UTF8, "https://raw.githubusercontent.com/meepen/Lua-5.1-UTF-8/master/utf8.lua");
-	XorS(IniScript, "https://pastebin.com/raw/6Hym6h7G");
-	//XorS(requireFIX, "loadstring(game:HttpGet(\"https://pastebin.com/raw/WXrZ1bxM \",true))()");
-	DWORD ScriptContext = Memory::Scan(PAGE_READWRITE, (char*)&ScriptContextVFT_Addy, (char*)"xxxx");
-	RLS = ScriptContext + 56 * 0 + 172 + *(DWORD*)(ScriptContext + 56 * 0 + 172);
+	
+	DWORD g;
+	VirtualProtect(&FreeConsole, 1, PAGE_EXECUTE_READWRITE, &g);
+	*(DWORD*)& FreeConsole = 0xC3;
+	VirtualProtect(&FreeConsole, 1, g, 0);
+	AllocConsole();
+	SetConsoleTitleA("Skidded Bullshit?");
+	freopen("CONIN$", "r", stdin);
+	freopen("CONOUT$", "w", stdout);
+
+	unsigned char dm[8];
+	int DataModel = *reinterpret_cast<std::uintptr_t*>(GetDataModel(dm)) + 0x44;
+	std::cout << "Getting Script Context!" << std::endl;
+	const auto ScriptContext = FindFirstClass(DataModel, "ScriptContext");
+	printf("RBX::DataModel: %x\n", DataModel);
+	DWORD v2 = ScriptContext;
+	DWORD v3 = 0;
+	RLS = v2 + 56 * v3 + 172 ^ *(DWORD*)(v2 + 56 * v3 + 172);
 	LS = luaL_newstate();
 	luaL_openlibs(LS);
-	*reinterpret_cast<int*>(*reinterpret_cast<int*>(RLS + 128) + 24) = 6;
+	SetKoaxyDentity();
 	VehHandlerpush();
 	std::vector<std::string> Globals{
 "printidentity","game","Game","workspace","Workspace",
@@ -1645,6 +1590,7 @@ void Main()
 	for (auto func : Globals) {
 		WrapG(RLS, LS, func.c_str());
 	}
+	lua_register(LS, "require", custom_require);
 	lua_register(LS, "setreadonly", setreadonly);
 	lua_register(LS, "isreadonly", custom_isreadonly);
 	lua_register(LS, "getrawmetatable", custom_getrawmetatable);
@@ -1656,8 +1602,7 @@ void Main()
 	lua_register(LS, "getrenv", custom_getgenv);
 	lua_register(LS, "getreg", getreg);
 	lua_register(LS, "getfenv", getfenv);
-	lua_register(LS, "require", custom_require);
-	lua_register(LS, "set_identity", setidentity);
+	lua_register(LS, "setidentity", setidentity);
 	lua_register(LS, "checkcaller", CheckCaller);
 	lua_register(LS, "is_protosmasher_caller", CheckCaller);
 	lua_register(LS, "isrbxactive", isrbxactive);
@@ -1679,12 +1624,10 @@ void Main()
 	KeyBoardLibs::RegisterKeyBoardLibs(LS);
 	MouseLibs::RegisterMouseLibs(LS);
 	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)LuaPipe, NULL, NULL, NULL);
-	CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)InitImGui, NULL, NULL, NULL);
+	//CreateThread(NULL, NULL, (LPTHREAD_START_ROUTINE)InitImGui, NULL, NULL, NULL);
 	AntiBan::LoadAntiBan();
 	Sleep(3000);
-	_env::ExecuteScript(loadstringscript.decrypt());
-    _env:ExecuteScript(download_url(UTF8.decrypt()).c_str());
-	_env::ExecuteScript(download_url(IniScript.decrypt()).c_str());
+	
 	char Path[MAX_PATH];
 	Files::GetFile("E2.dll", "AutoExec\\", Path, MAX_PATH);
 	std::string FinalisedPath = Path;
@@ -1699,7 +1642,9 @@ void Main()
 		else {
 		}
 	}
+
 	READY = true;
+	luaL_dostring(LS, "print(isReady())");
 }
 
 BOOL APIENTRY DllMain(HMODULE Module, DWORD Reason, LPVOID) {
